@@ -8,7 +8,7 @@ from collections import abc, deque
 from itertools import chain, cycle, islice, repeat, tee
 from typing import Iterable, Iterator, Sequence, TypeVar, Union
 
-from .len_helpers import _SizedIterator, as_sized
+from ._len_helpers import _SizedIterator, as_sized
 
 
 class _Empty(enum.Enum):

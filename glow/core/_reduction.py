@@ -18,7 +18,7 @@ from typing import (Any, Callable, ClassVar, Dict, List, NamedTuple, Optional,
 
 import loky
 
-from .._import_hook import when_imported
+from ._import_hook import when_imported
 
 _SYSTEM_SHM_MIN_SIZE = int(2e9)
 _SYSTEM_SHM = Path('/dev/shm')

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import (Callable, Generic, Iterable, Iterator, Optional, Protocol,
                     Sized, TypeVar, overload, runtime_checkable)
 
+_T = TypeVar('_T')
 _T_co = TypeVar('_T_co', covariant=True)
 
 
@@ -22,11 +23,11 @@ class SizedIterator(Sized, Iterator[_T_co], Protocol[_T_co]):
 
 
 @dataclass(repr=False)
-class _SizedIterable(Generic[_T_co]):
-    it: Iterable[_T_co]
+class _SizedIterable(Generic[_T]):
+    it: Iterable[_T]
     size: int
 
-    def __iter__(self) -> Iterator[_T_co]:
+    def __iter__(self) -> Iterator[_T]:
         return iter(self.it)
 
     def __len__(self) -> int:
@@ -42,20 +43,20 @@ class _SizedIterable(Generic[_T_co]):
 
 
 @dataclass(repr=False)
-class _SizedIterator(_SizedIterable[_T_co]):
-    it: Iterator[_T_co]
+class _SizedIterator(_SizedIterable[_T]):
+    it: Iterator[_T]
     size: int
 
-    def __iter__(self) -> Iterator[_T_co]:
+    def __iter__(self) -> Iterator[_T]:
         return self
 
-    def __next__(self) -> _T_co:
+    def __next__(self) -> _T:
         self.size = max(0, self.size - 1)
         return next(self.it)
 
 
 _SizeHint = Callable[..., int]
-_SizedGenFn = Callable[..., SizedIterable[_T_co]]
+_SizedGenFn = Callable[..., SizedIterable[_T]]
 
 # ---------------------------------------------------------------------------
 
@@ -63,13 +64,13 @@ _SizedGenFn = Callable[..., SizedIterable[_T_co]]
 @overload
 def as_sized(
     hint: _SizeHint
-) -> Callable[[Callable[..., Iterable[_T_co]]], _SizedGenFn[_T_co]]:
+) -> Callable[[Callable[..., Iterable[_T]]], _SizedGenFn[_T]]:
     ...
 
 
 @overload
-def as_sized(gen_fn: Callable[..., Iterable[_T_co]],
-             hint: _SizeHint) -> Callable[..., SizedIterable[_T_co]]:
+def as_sized(gen_fn: Callable[..., Iterable[_T]],
+             hint: _SizeHint) -> Callable[..., SizedIterable[_T]]:
     ...
 
 
@@ -119,14 +120,14 @@ def as_sized(gen_fn=None, *, hint):
 # ---------------------------------------------------------------------------
 
 
-class _PartialIter(Iterable[_T_co]):
+class _PartialIter(Iterable[_T]):
     def __init__(self, hint: Optional[Callable[..., int]],
-                 gen_fn: Callable[..., Iterable[_T_co]], *args: object,
+                 gen_fn: Callable[..., Iterable[_T]], *args: object,
                  **kwargs: object) -> None:
         self.gen = functools.partial(gen_fn, *args, **kwargs)
         self.hint = hint
 
-    def __iter__(self) -> Iterator[_T_co]:
+    def __iter__(self) -> Iterator[_T]:
         return iter(self.gen())
 
     def __len__(self) -> int:
@@ -147,13 +148,13 @@ class _PartialIter(Iterable[_T_co]):
 @overload
 def partial_iter(
     hint: _SizeHint = ...
-) -> Callable[[Callable[..., Iterable[_T_co]]], _SizedGenFn[_T_co]]:
+) -> Callable[[Callable[..., Iterable[_T]]], _SizedGenFn[_T]]:
     ...
 
 
 @overload
-def partial_iter(gen_fn: Callable[..., Iterable[_T_co]],
-                 hint: _SizeHint = ...) -> Callable[..., SizedIterable[_T_co]]:
+def partial_iter(gen_fn: Callable[..., Iterable[_T]],
+                 hint: _SizeHint = ...) -> Callable[..., SizedIterable[_T]]:
     ...
 
 

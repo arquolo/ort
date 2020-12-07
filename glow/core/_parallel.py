@@ -1,33 +1,63 @@
-__all__ = ['mapped']
+__all__ = ['buffered', 'mapped']
 
 import atexit
+import enum
 import os
 import signal
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from cProfile import Profile
 from dataclasses import dataclass
 from functools import partial
 from itertools import chain, islice
 from pstats import Stats
-from threading import RLock
+from queue import Queue
+from threading import Event, RLock
 from time import perf_counter
-from typing import (Callable, Deque, Iterable, Iterator, Optional, Sequence,
-                    Tuple, TypeVar, cast)
+from typing import (Callable, Deque, Iterable, Iterator, Optional, Protocol,
+                    Sequence, Tuple, TypeVar, Union, cast)
 
 import loky
 
+from ._more import chunked, sliced
 from ._reduction import reducers, serialize
-from .more import chunked, sliced
 
 _T = TypeVar('_T')
 _NUM_CPUS = os.cpu_count() or 0
 _IDLE_WORKER_TIMEOUT = 10
 
-loky.backend.context.set_start_method('loky_init_main')
+
+class _Empty(enum.Enum):
+    token = 0
+
+
+_MaybeEmpty = Union[_T, _Empty]
+_empty = _Empty.token
+
+# -------------------------- some useful interfaces --------------------------
+
+
+class _IQueue(Protocol[_T]):
+    def get(self) -> _T:
+        ...
+
+    def put(self, value: _T) -> None:
+        ...
+
+
+class _IEvent(Protocol):
+    def is_set(self) -> bool:
+        ...
+
+    def set(self) -> None:  # noqa: A003
+        ...
+
+
+# ---------------------------- pool initialization ----------------------------
 
 
 def _mp_profile():
+    """Multiprocessed profiler"""
     prof = Profile()
     prof.enable()
 
@@ -46,14 +76,92 @@ def _initializer():
         _mp_profile()
 
 
-def _get_pool(num_workers: int) -> Executor:
-    return loky.get_reusable_executor(  # type: ignore
+@contextmanager
+def _get_executor(num_workers: int, mp: bool) -> Iterator[Executor]:
+    """Safe wrapper for ThreadPoolExecutor or ProcessPoolExecutor"""
+    if not mp:
+        with ThreadPoolExecutor(num_workers) as executor:
+            yield executor
+        return
+
+    executor: Executor = loky.get_reusable_executor(  # type: ignore
         num_workers,
+        os.environ.get('MP_CTX', 'loky_init_main'),
         timeout=_IDLE_WORKER_TIMEOUT,
         job_reducers=reducers,
         result_reducers=reducers,
         initializer=_initializer,
     )
+    # Kill workers if fail occures
+    terminator = atexit.register(executor.shutdown, kill_workers=True)
+    yield executor
+    atexit.unregister(terminator)  # Cancel killing workers if all ok
+
+
+def _setup_queues(
+        stack: ExitStack, latency: int,
+        mp: Union[bool, Executor]) -> Tuple[Executor, _IQueue, _IEvent]:
+    executor = (
+        mp if isinstance(mp, Executor) else stack.enter_context(
+            _get_executor(1, mp)))
+
+    if isinstance(executor, ThreadPoolExecutor):
+        return executor, Queue(latency), Event()
+
+    assert isinstance(executor, loky.ProcessPoolExecutor)
+    mgr = stack.enter_context(executor._context.Manager())
+    return executor, mgr.Queue(latency), mgr.Event()
+
+
+# -------- bufferize iterable by offloading to another thread/process --------
+
+
+@dataclass
+class _Buffered(Iterable[_T]):
+    iterable: Iterable[_T]
+    latency: int
+    mp: Union[bool, Executor]
+
+    def _consume(self, q: _IQueue[_MaybeEmpty[_T]], stop: _IEvent):
+        with ExitStack() as stack:
+            stack.callback(q.put, _empty)  # Match last q.get
+            stack.callback(q.put, _empty)  # Signal to stop iteration
+
+            for item, _ in zip(self.iterable, iter(stop.is_set, True)):
+                q.put(item)
+
+            # if stop.is_set():
+            #     stack.pop_all()
+            # q.put(_empty)  # Will happen if all ok to notify main to stop
+
+    def __iter__(self) -> Iterator[_T]:
+        with ExitStack() as stack:
+            q: _IQueue[_MaybeEmpty[_T]]
+            executor, q, stop = _setup_queues(stack, self.latency, self.mp)
+
+            stack.callback(q.get)  # Wakes q.put when main fails
+            stack.callback(stop.set)
+
+            task = executor.submit(self._consume, q, stop)
+            while (item := q.get()) is not _empty:
+                yield item
+            task.result()  # Throws if `consume` is dead
+
+    def __len__(self) -> int:
+        return len(self.iterable)  # type: ignore
+
+
+def buffered(iterable: Iterable[_T],
+             latency: int = 2,
+             mp: Union[bool, Executor] = False) -> _Buffered[_T]:
+    """
+    Iterates over `iterable` in background thread with at most `latency`
+    items ahead from caller
+    """
+    return _Buffered(iterable, latency, mp)
+
+
+# ---------------------------- automatic batching ----------------------------
 
 
 class _AutoSize:
@@ -89,6 +197,9 @@ class _AutoSize:
                              if self.duration > 0 else duration)
 
 
+# ---------------------- map iterable through function ----------------------
+
+
 @dataclass
 class _Mapped(Iterable[_T]):
     proxy: Callable[..., Sequence[_T]]
@@ -98,8 +209,7 @@ class _Mapped(Iterable[_T]):
     mp: bool
     chunksize: Optional[int]
 
-    def _submit(self, executor: Executor,
-                iterable: Iterable[tuple],
+    def _submit(self, executor: Executor, iterable: Iterable[tuple],
                 chunksize: int) -> Iterator[Future]:
         for chunk in chunked(iterable, chunksize):
             yield executor.submit(self.proxy, *chunk)
@@ -130,16 +240,9 @@ class _Mapped(Iterable[_T]):
             results.extend(islice(jobs, 1))
 
     def __iter__(self) -> Iterator[_T]:
-        terminator = None
-        if self.mp:
-            executor = _get_pool(self.num_workers)
-            terminator = atexit.register(executor.shutdown, kill_workers=True)
-        else:
-            executor = ThreadPoolExecutor(self.num_workers)
-
         with ExitStack() as stack:
-            if not self.mp:
-                stack.enter_context(executor)
+            executor = stack.enter_context(
+                _get_executor(self.num_workers, self.mp))
 
             iterable = zip(*self.iterables)
             if self.mp and self.chunksize is None:
@@ -148,9 +251,6 @@ class _Mapped(Iterable[_T]):
                 chunks = self._submit(executor, iterable, self.chunksize or 1)
 
             yield from chain.from_iterable(self._iter_chunks(stack, chunks))
-
-        if terminator is not None:
-            atexit.unregister(terminator)
 
     def __len__(self) -> int:
         return min(map(len, self.iterables))  # type: ignore
