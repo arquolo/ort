@@ -7,8 +7,8 @@ from typing import Any, Iterator, List, Tuple, Type, Union
 
 from torch import nn
 
+from .. import countable
 from ..api import get_wild_imports
-from ..core import countable
 
 _ARGS = frozenset({'input_size', 'num_features', 'in_features', 'in_channels'})
 

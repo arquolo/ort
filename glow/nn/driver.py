@@ -4,7 +4,7 @@ import os
 from contextlib import ExitStack
 from typing import NamedTuple, Sequence
 
-from ..core import Si
+from .. import Si
 
 
 class _GpuState(NamedTuple):

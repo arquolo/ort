@@ -5,7 +5,7 @@ from typing import List
 
 from torch import nn
 
-from ..core import windowed
+from .. import windowed
 from .modules_factory import Cat, DenseBlock, conv
 from .util import param_count
 

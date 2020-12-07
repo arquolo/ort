@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.autograd import Function
 
-from ..core import Si, mangle
+from .. import Si, mangle
 
 
 def id_(x: Any) -> str:

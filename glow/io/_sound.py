@@ -6,7 +6,7 @@ from contextlib import ExitStack
 import numpy as np
 import wrapt
 
-from ..core import coroutine
+from .. import coroutine
 
 
 @coroutine

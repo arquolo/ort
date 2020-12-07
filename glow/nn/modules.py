@@ -7,7 +7,7 @@ import torch.jit
 import torch.nn.functional as F
 from torch import nn
 
-from ..core import repr_as_obj
+from .. import repr_as_obj
 
 
 class Activation(nn.Module):

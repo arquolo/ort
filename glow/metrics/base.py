@@ -10,7 +10,7 @@ from typing import (Callable, Dict, Generator, Protocol, Sequence, Tuple,
 
 import torch
 
-from ..core import coroutine
+from .. import coroutine
 
 TensorDict = Dict[str, torch.Tensor]
 

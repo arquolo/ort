@@ -8,10 +8,12 @@ from io import BytesIO
 from typing import Callable, Iterator, Tuple, TypeVar, cast
 
 import torch
+import torch.autograd
+import torch.cuda
 import torch.onnx
 from torch import nn
 
-from ..core import Si
+from .. import Si
 
 _F = TypeVar('_F', bound=Callable[..., Iterator])
 
