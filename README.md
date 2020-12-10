@@ -42,11 +42,11 @@ Tested on ArchLinux, Ubuntu 18.04/20.04, Windows 10.
 CTypes-based replacement of [`torchslide`](https://github.com/arquolo/torchslide) (deprecated).
 
 ```python
-from glow.io import TiledImage
+from glow.io import read_tiled
 
-slide = TiledImage('test.svs')
-shape: 'Tuple[int, ...]' = slide.shape
-scales: 'Tuple[int, ...]' = slide.scales
+slide = read_tiled('test.svs')
+shape: tuple[int, ...] = slide.shape
+scales: tuple[int, ...] = slide.scales
 image: np.ndarray = slide[:2048, :2048].view()  # Get numpy.ndarray
 ```
 </details>
