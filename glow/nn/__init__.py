@@ -1,7 +1,7 @@
+from ._loader import make_loader
 from ._stepper import Stepper
 from .amp import get_amp_context
 from .driver import get_gpu_state
-from .loader import make_loader
 from .modules import Activation, Noise, UpsampleArea, UpsamplePoint, View
 from .modules_factory import Cat, DenseBlock, SEBlock, Sum, conv, linear
 from .optimizers import SGDW, AdamW, RAdam
