@@ -28,7 +28,7 @@ def memprof(name: str = 'Task', callback: Callable[[float], object] = None):
         if callback is not None:
             callback(size)
         else:
-            print(f'{name} done: {"+" if size >= 0 else "-"}{Si.bits(size)}')
+            print(f'{name} done: {"+" if size >= 0 else ""}{Si.bits(size)}')
 
 
 @contextmanager
