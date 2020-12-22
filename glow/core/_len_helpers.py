@@ -1,4 +1,4 @@
-__all__ = ['as_sized', 'partial_iter']
+__all__ = ['as_sized']
 
 import functools
 from dataclasses import dataclass
@@ -7,6 +7,8 @@ from typing import (Callable, Generic, Iterable, Iterator, Optional, Protocol,
 
 _T = TypeVar('_T')
 _T_co = TypeVar('_T_co', covariant=True)
+_GeneratorFunc = TypeVar('_GeneratorFunc', bound=Callable[..., Iterable])
+_SizeHint = Callable[..., int]
 
 
 @runtime_checkable
@@ -55,22 +57,16 @@ class _SizedIterator(_SizedIterable[_T]):
         return next(self.it)
 
 
-_SizeHint = Callable[..., int]
-_SizedGenFn = Callable[..., SizedIterable[_T]]
-
 # ---------------------------------------------------------------------------
 
 
 @overload
-def as_sized(
-    hint: _SizeHint
-) -> Callable[[Callable[..., Iterable[_T]]], _SizedGenFn[_T]]:
+def as_sized(hint: _SizeHint) -> Callable[[_GeneratorFunc], _GeneratorFunc]:
     ...
 
 
 @overload
-def as_sized(gen_fn: Callable[..., Iterable[_T]],
-             hint: _SizeHint) -> Callable[..., SizedIterable[_T]]:
+def as_sized(gen_fn: _GeneratorFunc, hint: _SizeHint) -> _GeneratorFunc:
     ...
 
 
@@ -147,14 +143,13 @@ class _PartialIter(Iterable[_T]):
 
 @overload
 def partial_iter(
-    hint: _SizeHint = ...
-) -> Callable[[Callable[..., Iterable[_T]]], _SizedGenFn[_T]]:
+        hint: _SizeHint = ...) -> Callable[[_GeneratorFunc], _GeneratorFunc]:
     ...
 
 
 @overload
-def partial_iter(gen_fn: Callable[..., Iterable[_T]],
-                 hint: _SizeHint = ...) -> Callable[..., SizedIterable[_T]]:
+def partial_iter(gen_fn: _GeneratorFunc,
+                 hint: _SizeHint = ...) -> _GeneratorFunc:
     ...
 
 

@@ -26,7 +26,7 @@ def _break_on_globe(frame_infos):
             return
 
 
-def whereami(skip=2):
+def whereami(skip: int = 2) -> str:
     frame_infos = _break_on_globe(inspect.stack()[skip:])
     return ' -> '.join(':'.join((
         getattr(inspect.getmodule(frame), '__name__', '[root]'),

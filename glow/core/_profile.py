@@ -4,6 +4,7 @@ import functools
 import threading
 import time
 import weakref
+import inspect
 from contextlib import contextmanager
 from typing import Callable, Dict, TypeVar, cast
 
@@ -32,7 +33,7 @@ def memprof(name: str = 'Task', callback: Callable[[float], object] = None):
 
 
 @contextmanager
-def timer(name: str = 'Task', callback: Callable[[float], object] = None):
+def timer(name: str = None, callback: Callable[[float], object] = None):
     init = time.perf_counter()
     try:
         yield
@@ -41,6 +42,14 @@ def timer(name: str = 'Task', callback: Callable[[float], object] = None):
         if callback is not None:
             callback(duration)
         else:
+            if name is None:
+                if ((frame := inspect.currentframe()) and frame.f_back and
+                        frame.f_back.f_back):
+                    tb = inspect.getframeinfo(frame.f_back.f_back)
+                    name = f'{tb.filename}:{tb.lineno} block'
+                else:
+                    name = 'Task'
+
             print(f'{name} done in {Si(duration)}s')
 
 
