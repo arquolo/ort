@@ -3,9 +3,6 @@
 
 """TODO:
 Add:
-    glow.buffered
-    - Offloading to other process. Use loky as backend.
-
     glow.mapped
     - Proper serialization of np.ndarray/np.memmap
       - `parent` -> `child` = move to shared memory if size allows
@@ -13,8 +10,7 @@ Add:
         otherwise move as usual.
       - Drop shared data at pool shutdown.
 
-    glow.{nn.make_loader -> utils.make_loader}
-    - IterableDataset loader. Use chunked + roundrobin + buffered as baseline.
+    glow.{nn.make_loader -?> utils.make_loader}
     - Seed as argument to toggle patching of dataset and iterable
       to provide batchsize- and workers-invariant data generation
 
@@ -42,12 +38,14 @@ Refactor:
         - stream_batched - group calls to batches
         - memoize_batched - cache and coalence calls
 
-    glow.io._tiled
-    - Make external factory to combine all 3 classes with memoization. Drop
-      usage of metaclass as ambiguous.
-
     glow.nn.modules
     - Drop garbage, redesign all of it. Use glow.env as storage for options.
+
+    glow._len_helpers.{as_sized, partial_iter}
+    - len_hint(_object: Any) -> int: ...
+    - Keep signature of wrapped function
+    - Make len() patching optional
+    - Add wrapper for tqdm to use there len_hint(...) instead of total=len(...)
 
 Chore:
     Remove wrapt as dependency (used for decorator, ObjectProxy)
