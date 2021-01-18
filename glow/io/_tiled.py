@@ -1,4 +1,4 @@
-__all__ = ['read_tiled']
+__all__ = ['TiledImage', 'read_tiled']
 
 import ctypes
 import os
@@ -17,7 +17,7 @@ from .. import call_once, memoize
 
 _TIFF: Any = None
 _OSD: Any = None
-_TYPE_REGISTRY: Dict[str, Type['_TiledImage']] = {}
+_TYPE_REGISTRY: Dict[str, Type['TiledImage']] = {}
 
 
 def _patch_path(prefix):
@@ -86,7 +86,7 @@ class Codec(Enum):
 
 
 class _TileScaler(NamedTuple):
-    """Proxy, moves rescaling out of `_TiledImage.__getitem__`"""
+    """Proxy, moves rescaling out of `TiledImage.__getitem__`"""
     image: np.ndarray
     scale: float = 1.
 
@@ -129,18 +129,21 @@ class _Decoder:
             yield
 
 
-class _TiledImage(_Decoder):
-    def __init_subclass__(cls: Type['_TiledImage'], extensions: str) -> None:
+class TiledImage(_Decoder):
+    def __init_subclass__(cls: Type['TiledImage'], extensions: str) -> None:
         _TYPE_REGISTRY.update({f'.{ext}': cls for ext in extensions.split()})
 
     def __init__(self, path: Path, num_levels: int = 0) -> None:
+        if type(self) is TiledImage:
+            raise RuntimeError('TiledImage is not for direct construction. '
+                               'Use read_tiled() factory function')
         super().__init__()
         self.path = path
         self._num_levels = num_levels
         self._spec = dict(self._init_spec(num_levels))
 
     def __reduce__(self) -> Union[str, tuple]:
-        return _TiledImage, (self.path, )  # self._slices)
+        return TiledImage, (self.path, )  # self._slices)
 
     def _init_spec(self, num_levels: int):
         assert num_levels > 0
@@ -200,7 +203,7 @@ class _TiledImage(_Decoder):
 
 
 class _OpenslideImage(
-        _TiledImage,
+        TiledImage,
         extensions='bif mrxs ndpi scn svs svsslide tif tiff vms vmu'):
     def __init__(self, path: Path) -> None:
         _setup_libs()
@@ -261,7 +264,7 @@ class _OpenslideImage(
         return None
 
 
-class _TiffImage(_TiledImage, extensions='svs tif tiff'):
+class _TiffImage(TiledImage, extensions='svs tif tiff'):
     def __init__(self, path: Path) -> None:
         _setup_libs()
         self._ptr = (
@@ -400,7 +403,7 @@ class _TiffImage(_TiledImage, extensions='svs tif tiff'):
     10_485_760,
     policy='lru',
     key_fn=lambda name: Path(name).resolve().as_posix())
-def read_tiled(anypath: Union[Path, str]) -> _TiledImage:
+def read_tiled(anypath: Union[Path, str]) -> TiledImage:
     """Reads multi-scale images.
 
     Usage:
