@@ -10,7 +10,7 @@ from contextlib import contextmanager, nullcontext
 from enum import Enum
 from pathlib import Path
 from threading import RLock
-from typing import Any, NamedTuple, TypeVar
+from typing import Any, NamedTuple
 
 import cv2
 import numpy as np
@@ -52,40 +52,6 @@ def _setup_libs():
     _OSD.openslide_get_property_names.restype = ctypes.POINTER(ctypes.c_char_p)
 
 
-# ----------------------- some constants from libtiff -----------------------
-
-
-class Color(Enum):
-    MINISBLACK = 1
-    RGB = 2
-    YCBCR = 6
-
-
-class Codec(Enum):
-    RAW = 1
-    CCITT = 2
-    CCITTFAX3 = 3
-    CCITTFAX4 = 4
-    LZW = 5
-    JPEG_OLD = 6
-    JPEG = 7
-    ADOBE_DEFLATE = 8
-    RAW_16 = 32771
-    PACKBITS = 32773
-    THUNDERSCAN = 32809
-    DEFLATE = 32946
-    DCS = 32947
-    JPEG2000_YUV = 33003
-    JPEG2000_RGB = 33005
-    JBIG = 34661
-    SGILOG = 34676
-    SGILOG24 = 34677
-    JPEG2000 = 34712
-    LZMA = 34925
-    ZSTD = 50000
-    WEBP = 50001
-
-
 # --------------------------------- rescaler ---------------------------------
 
 
@@ -108,6 +74,37 @@ class _TileScaler(NamedTuple):
             size = round(self.scale * h), round(self.scale * w)
 
         return cv2.resize(self.image, size[::-1], interpolation=cv2.INTER_AREA)
+
+
+# ---------------------------- DeepZoom Image API ----------------------------
+
+
+class _Dzi(NamedTuple):
+    slide: TiledImage
+    offset: tuple[int, ...]
+    size: tuple[int, ...]
+    tile: int = 256
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.slide.shape
+
+    def xml(self, fmt: str = 'jpeg') -> str:
+        e = ElementMaker()
+        return tostring(
+            e.Image(
+                e.Size(Height=str(self.size[0]), Width=str(self.size[1])),
+                TileSize=str(self.tile),
+                Overlap='0',
+                Format=fmt,
+                xmlns='http://schemas.microsoft.com/deepzoom/2008'))
+
+    def at(self, level: int, iy_ix: tuple[int, ...]) -> np.ndarray:
+        scale = 2 ** (max(self.slide.shape[:2]).bit_length() - level)
+        tile_0 = self.tile * scale
+        return self.slide.at(
+            tuple(p + ip * tile_0 for p, ip in zip(self.offset, iy_ix)),
+            self.tile, scale)
 
 
 # --------------------------------- decoders ---------------------------------
@@ -204,6 +201,12 @@ class TiledImage(_Decoder):
         return self[y:y + dst_size * scale:scale,
                     x:x + dst_size * scale:scale].view((dst_size, dst_size))
 
+    def dzi(self, tile: int = 256) -> _Dzi:
+        raise NotImplementedError
+
+
+# ----------------------------- OpenSlide decoder -----------------------------
+
 
 class _OpenslideImage(
         TiledImage,
@@ -215,15 +218,14 @@ class _OpenslideImage(
             raise ValueError(err)
         weakref.finalize(self, _OSD.openslide_close, self._ptr)
 
-        if (bg_color_hex := _OSD.openslide_get_property_value(
-                self._ptr, b'openslide.background-color')) is not None:
-            iv = int(bg_color_hex, base=16).to_bytes(3, 'big')
-            self.bg_color = np.frombuffer(iv, dtype='u1')
-        else:
-            self.bg_color = np.full(3, 255, dtype='u1')
+        bg_hex = self._tag(b'openslide.background-color') or b'FFFFFF'
+        self.bg_color = np.array([int(bg_hex, 16)], dtype='>u4').view('u1')[1:]
 
         num_levels = _OSD.openslide_get_level_count(self._ptr)
         super().__init__(path, num_levels)
+
+    def _tag(self, name: bytes) -> bytes:
+        return _OSD.openslide_get_property_value(self._ptr, name)
 
     def _get_spec(self, level: int) -> dict:
         y, x = ctypes.c_int64(), ctypes.c_int64()
@@ -242,9 +244,9 @@ class _OpenslideImage(
 
         rgb = data[..., 2::-1]
         opacity = data[..., 3:]
-        u2_255 = np.array(255, dtype='u2')
-        return np.where(opacity, (u2_255 * rgb / opacity.clip(1)).astype('u1'),
-                        self.bg_color)
+        return np.where(
+            opacity, (255 * rgb.astype('u2') // opacity.clip(1)).astype('u1'),
+            self.bg_color)
 
     @property
     def metadata(self) -> dict[str, str]:
@@ -252,39 +254,93 @@ class _OpenslideImage(
         if names := _OSD.openslide_get_property_names(self._ptr):
             i = 0
             while name := names[i]:
-                m[name.decode()] = _OSD.openslide_get_property_value(
-                    self._ptr, name).decode()
+                m[name.decode()] = self._tag(name).decode()
                 i += 1
         return m
 
     @property
     def spacing(self) -> float | None:
-        mpp = (
-            _OSD.openslide_get_property_value(
-                self._ptr, f'openslide.mpp-{ax}'.encode()) for ax in 'yx')
+        mpp = (self._tag(f'openslide.mpp-{ax}'.encode()) for ax in 'yx')
         if s := [float(m) for m in mpp if m]:
             return np.mean(s)
         return None
+
+    def dzi(self, tile: int = 256) -> _Dzi:
+        offset = tuple(
+            int(self._tag(f'openslide.bounds-{ax}'.encode()) or 0)
+            for ax in 'yx')
+        size = tuple(
+            int(self._tag(f'openslide.bounds-{ax}'.encode()) or lim)
+            for ax, lim in zip(('height', 'width'), self.shape[:2]))
+        return _Dzi(self, offset, size, tile)
+
+
+# ------------------------------- Tiff decoder -------------------------------
+
+
+class Color(Enum):
+    MINISBLACK = 1
+    RGB = 2
+    YCBCR = 6
+
+
+class Codec(Enum):
+    RAW = 1
+    CCITT = 2
+    CCITTFAX3 = 3
+    CCITTFAX4 = 4
+    LZW = 5
+    JPEG_OLD = 6
+    JPEG = 7
+    ADOBE_DEFLATE = 8
+    RAW_16 = 32771
+    PACKBITS = 32773
+    THUNDERSCAN = 32809
+    DEFLATE = 32946
+    DCS = 32947
+    JPEG2000_YUV = 33003
+    JPEG2000_RGB = 33005
+    JBIG = 34661
+    SGILOG = 34676
+    SGILOG24 = 34677
+    JPEG2000 = 34712
+    LZMA = 34925
+    ZSTD = 50000
+    WEBP = 50001
+
+
+class TiffTag:
+    SIZE = (257, 256)
+    BITDEPTH = 258
+    COMPRESSION = 259
+    COLORSPACE = 262
+    DESCRIPTION = 270
+    SAMPLES_PER_PIXEL = 277
+    PLANAR = 284
+    TILE = (323, 322)
+    RESOLUTION = (283, 282)
+    JPEG_TABLES = 347
+    TILE_BYTE_COUNTS = 325
+    SAMPLE = 339
 
 
 class _TiffImage(TiledImage, extensions='svs tif tiff'):
     def __init__(self, path: Path) -> None:
         _setup_libs()
+        spath = path.as_posix()
         self._ptr = (
-            _TIFF.TIFFOpenW(path.as_posix(), b'rm') if sys.platform == 'win32'
-            else _TIFF.TIFFOpen(path.as_posix().encode(), b'rm'))
+            _TIFF.TIFFOpenW(spath, b'rm') if sys.platform == 'win32' else
+            _TIFF.TIFFOpen(spath.encode(), b'rm'))
         assert self._ptr
         weakref.finalize(self, _TIFF.TIFFClose, self._ptr)
 
         num_levels = _TIFF.TIFFNumberOfDirectories(self._ptr)
         super().__init__(path, num_levels)
 
-    def _tag(self, type_, tag: int, default=None):
+    def _tag(self, type_, tag: int):
         value = type_()
-        res = _TIFF.TIFFGetField(self._ptr, ctypes.c_uint32(tag),
-                                 ctypes.byref(value))
-        if not res and default is not None:
-            return default
+        _TIFF.TIFFGetField(self._ptr, ctypes.c_uint32(tag),
+                           ctypes.byref(value))
         return value.value
 
     @contextmanager
@@ -302,36 +358,45 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
         if not _TIFF.TIFFIsTiled(self._ptr):
             return {}
 
-        if self._tag(ctypes.c_uint16, 284) != 1:
+        if self._tag(ctypes.c_uint16, TiffTag.PLANAR) != 1:
             raise TypeError(f'Level {level} is not contiguous!')
 
-        desc = self._tag(ctypes.c_char_p, 270)
+        desc = self._tag(ctypes.c_char_p, TiffTag.DESCRIPTION)
         desc = (desc or b'').decode().replace('\r\n', '|').split('|')
 
-        color = Color(self._tag(ctypes.c_uint16, 262))
+        color = Color(self._tag(ctypes.c_uint16, TiffTag.COLORSPACE))
         spp = (
-            self._tag(ctypes.c_uint16, 277)
+            self._tag(ctypes.c_uint16, TiffTag.SAMPLES_PER_PIXEL)
             if color in [Color.MINISBLACK, Color.RGB] else 4)
-        shape = (self._tag(ctypes.c_uint32, tag) for tag in (257, 256))
-        tshape = (self._tag(ctypes.c_uint32, tag) for tag in (323, 322))
 
         spec = {
-            'level': level,
-            'shape': (*shape, spp),
-            'tile': (*tshape, spp),
-            'color': color,
-            # 'bits_per_sample': self._tag(ctypes.c_uint16, 258),
-            # 'sample_format': self._tag(ctypes.c_uint16, 339, default=1),
-            'description': desc,
-            'compression': Codec(self._tag(ctypes.c_uint16, 259)),
+            'level':
+                level,
+            'shape': (*(self._tag(ctypes.c_uint32, tag)
+                        for tag in TiffTag.SIZE), spp),
+            'tile': (*(self._tag(ctypes.c_uint32, tag)
+                       for tag in TiffTag.TILE), spp),
+            'color':
+                color,
+            'description':
+                desc,
+            'compression':
+                Codec(self._tag(ctypes.c_uint16, TiffTag.COMPRESSION)),
         }
         if spec['compression'] is Codec.JPEG:
             count = ctypes.c_int()
             jpt_ptr = ctypes.c_char_p()
-            if _TIFF.TIFFGetField(
-                    self._ptr, 347, ctypes.byref(count),
-                    ctypes.byref(jpt_ptr)) and count.value > 4:
+            if _TIFF.TIFFGetField(self._ptr, TiffTag.JPEG_TABLES,
+                                  ctypes.byref(count),
+                                  ctypes.byref(jpt_ptr)) and count.value > 4:
                 spec['jpt'] = ctypes.string_at(jpt_ptr, count.value)
+
+        tbc_ptr = ctypes.POINTER(ctypes.c_uint64)()
+        if _TIFF.TIFFGetField(self._ptr, TiffTag.TILE_BYTE_COUNTS,
+                              ctypes.byref(tbc_ptr)):
+            num_tiles = _TIFF.TIFFNumberOfTiles(self._ptr)
+            tbc = np.ctypeslib.as_array(tbc_ptr, (num_tiles, ))
+            spec['tile_sizes'] = tbc.copy()
 
         return spec
 
@@ -345,9 +410,7 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
             return image
 
         offset = _TIFF.TIFFComputeTile(self._ptr, x, y, 0, 0)
-        tile_byte_counts = self._tag(ctypes.c_void_p, 325)
-        nbytes: int = ctypes.cast(tile_byte_counts,
-                                  ctypes.POINTER(ctypes.c_ulonglong))[offset]
+        nbytes = int(spec['tile_sizes'][offset])
 
         data = ctypes.create_string_buffer(nbytes)
         _TIFF.TIFFReadRawTile(self._ptr, offset, data, len(data))
@@ -392,14 +455,20 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
 
     @property
     def spacing(self) -> float | None:
-        s = [(10000 / m)
-             for x in (283, 282) if (m := self._tag(ctypes.c_float, x))]
+        s = [(10_000 / m) for t in TiffTag.RESOLUTION
+             if (m := self._tag(ctypes.c_float, t))]
         if s:
             return np.mean(s)
         for token in self._spec[1]['description']:
             if 'MPP' in token:
                 return float(token.split('=')[-1].strip())
         return None
+
+    def dzi(self, tile: int = 256) -> _Dzi:
+        return _Dzi(self, (0, 0), self.shape[:2], tile=tile)
+
+
+# ----------------------------- generic factory -----------------------------
 
 
 @memoize(
