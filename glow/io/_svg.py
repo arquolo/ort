@@ -2,11 +2,11 @@ __all__ = ['Svg']
 
 from pathlib import Path
 from typing import Iterable, List, Tuple
-from xml.etree import ElementTree
-from xml.etree.ElementTree import Element, tostring
 
 import cv2
 import numpy as np
+from lxml.builder import ElementMaker
+from lxml.etree import ElementTree, indent, tostring
 
 _SVG_NS = 'http://www.w3.org/2000/svg'
 _SCRIPT = """\
@@ -34,21 +34,6 @@ def hsv_colors(count):
         yield f'hsl({hue},100%,50%)'
 
 
-def indent(elem, level=0):
-    """Fixes indentation in ElementTree"""
-    i = '\n' + level * '  '
-    if len(elem) != 0:
-        if not elem.text or not elem.text.strip():
-            elem.text = i + '  '
-        e = None
-        for e in elem:
-            indent(e, level + 1)
-        if e is not None and not (e.tail and e.tail.strip()):
-            e.tail = i
-    if not elem.tail or not elem.tail.strip():
-        elem.tail = i
-
-
 class Svg:
     """Converts raster mask (2d numpy.ndarray of integers) to SVG-file.
 
@@ -62,28 +47,29 @@ class Svg:
     Svg(mask, ['pos', 'neg']).save('sample.svg')
     ```
     """
-    def __init__(self, mask: np.ndarray, classes: List[str]):
-        root = Element('svg', xmlns=_SVG_NS)
-        root.append(Element('image'))
+        e = ElementMaker()
 
+        groups = []
         for uniq in np.unique(mask.ravel()):
             if uniq == 0:  # skip background
                 continue
             m = (mask == uniq).astype('u1')
             contours = cv2.findContours(m, cv2.RETR_CCOMP,
                                         cv2.CHAIN_APPROX_TC89_L1)[-2]
-            group = Element('g', {'class': classes[uniq - 1]})
-            group.extend(
-                Element('polygon', points=' '.join(map(str, contour.ravel())))
+            polygons = (
+                e.polygon(points=' '.join(map(str, contour.ravel())))
                 for contour in contours if len(contour) >= 3)
-            root.append(group)
+            groups.append(e.g(*polygons, **{'class': classes[uniq - 1]}))
 
-        root.append(Element('script', href='main.js'))
-        style = Element('style')
-        style.text = '@import url(main.css)'
-        root.append(style)
-        indent(root)
-        self.body = tostring(root, encoding='unicode')
+        root = e.svg(
+            e.image(),
+            *groups,
+            e.script(href='main.js'),
+            e.style('@import url(main.css)'),
+            xmlns=_SVG_NS)
+
+        indent(root, space='\t')
+        self.body = tostring(root, encoding='utf-8')
 
         maxlen = max(len(c) for c in classes)
         self.classes = [f'{c:{maxlen}s}' for c in classes]
@@ -108,12 +94,13 @@ class Svg:
         """
         Yields contours, contour is 2d numpy array of shape [count, (x, y)]
         """
-        path = Path(path).with_suffix('.svg')
-        root = ElementTree.parse(str(path)).getroot()
-        for group in root.iter(tag=f'{{{_SVG_NS}}}g'):
+        tree = ElementTree()
+        tree.parse(path.with_suffix('.svg').as_posix())
+
+        for group in tree.getiterator(f'{{{_SVG_NS}}}g'):
             points = (polygon.attrib['points'].split(' ') for polygon in group)
             contours = [
-                np.array([int(p) for p in pset], dtype='int32').reshape(-1, 2)
+                np.array([int(p) for p in pset], dtype='i4').reshape(-1, 2)
                 for pset in points
             ]
             yield group.attrib['class'], contours

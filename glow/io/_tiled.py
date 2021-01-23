@@ -12,6 +12,8 @@ from typing import Any, Dict, NamedTuple, Optional, Tuple, Type, Union
 
 import cv2
 import numpy as np
+from lxml.builder import ElementMaker
+from lxml.etree import tostring
 
 from .. import call_once, memoize
 
