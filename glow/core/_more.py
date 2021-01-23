@@ -1,12 +1,15 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = [
     'as_iter', 'chunked', 'eat', 'ichunked', 'roundrobin', 'sliced', 'windowed'
 ]
 
 import enum
 import threading
-from collections import abc, deque
+from collections import deque
+from collections.abc import Iterable, Iterator, Sequence
 from itertools import chain, cycle, islice, repeat, tee
-from typing import Iterable, Iterator, Sequence, TypeVar, Union
+from typing import TypeVar
 
 from ._len_helpers import _SizedIterator, as_sized
 
@@ -19,12 +22,12 @@ _T = TypeVar('_T')
 _empty = _Empty.token
 
 
-def as_iter(obj: Union[Iterable[_T], _T, None],
+def as_iter(obj: Iterable[_T] | _T | None,
             times: int = None) -> Iterable[_T]:
     """Make iterator from object"""
     if obj is None:
         return ()
-    if isinstance(obj, abc.Iterable):
+    if isinstance(obj, Iterable):
         return islice(obj, times)
     return repeat(obj) if times is None else repeat(obj, times)
 
@@ -93,7 +96,7 @@ def ichunked(it: Iterable[_T], size: int) -> Iterator[Iterator[_T]]:
         eat(it2)  # Advance to head[size:]
 
 
-def eat(iterable: abc.Iterable, daemon: bool = False) -> None:
+def eat(iterable: Iterable, daemon: bool = False) -> None:
     """Consume iterable, daemonize if needed (move to background thread)"""
     if not daemon:
         deque(iterable, 0)

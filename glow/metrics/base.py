@@ -1,27 +1,27 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = [
     'Metric', 'Lambda', 'Scores', 'Staged', 'compose', 'to_index', 'to_prob'
 ]
 
 import itertools
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass, field
-from typing import (Callable, Dict, Generator, Protocol, Sequence, Tuple,
-                    Union, overload)
+from typing import Protocol, overload
 
 import torch
 
 from .. import coroutine
 
-TensorDict = Dict[str, torch.Tensor]
-
 
 @dataclass
 class Scores:
-    scalars: Dict[str, Union[float, int]] = field(default_factory=dict)
-    tensors: Dict[str, torch.Tensor] = field(default_factory=dict)
+    scalars: dict[str, float | int] = field(default_factory=dict)
+    tensors: dict[str, torch.Tensor] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, mapping: TensorDict) -> 'Scores':
+    def from_dict(cls, mapping: dict[str, torch.Tensor]) -> 'Scores':
         obj = cls()
         for k, v in mapping.items():
             if v.numel() == 1:
@@ -42,7 +42,7 @@ class Metric(ABC):
     def __call__(self, pred, true) -> torch.Tensor:
         raise NotImplementedError
 
-    def collect(self, state) -> Dict[str, torch.Tensor]:
+    def collect(self, state) -> dict[str, torch.Tensor]:
         raise state
 
 
@@ -78,7 +78,7 @@ class Staged(Metric):
         return {key: fn(state) for key, fn in self.funcs.items()}
 
 
-def to_index(pred, true) -> Tuple[int, torch.LongTensor, torch.LongTensor]:
+def to_index(pred, true) -> tuple[int, torch.LongTensor, torch.LongTensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to [B, ...] of indices.
     Drop bad indices.
@@ -94,7 +94,7 @@ def to_index(pred, true) -> Tuple[int, torch.LongTensor, torch.LongTensor]:
     return c, pred, true
 
 
-def to_prob(pred, true) -> Tuple[int, torch.Tensor, torch.LongTensor]:
+def to_prob(pred, true) -> tuple[int, torch.Tensor, torch.LongTensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to probs.
     Drop bad indices.
@@ -115,7 +115,8 @@ def to_prob(pred, true) -> Tuple[int, torch.Tensor, torch.LongTensor]:
 
 @coroutine
 def _batch_averaged(
-        fn: Metric) -> Generator[TensorDict, Sequence[torch.Tensor], None]:
+    fn: Metric
+) -> Generator[dict[str, torch.Tensor], Sequence[torch.Tensor], None]:
     assert isinstance(fn, Metric)
     args = yield {}
     state = torch.as_tensor(fn(*args))

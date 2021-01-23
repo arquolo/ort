@@ -1,7 +1,8 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['tiramisu']
 
 import itertools
-from typing import List
 
 from torch import nn
 
@@ -14,7 +15,7 @@ def tiramisu(cin, cout, init=48, depths=(4, 4), step=12):
     steps = itertools.accumulate([init] + [step * depth for depth in depths])
     steps = [*steps]
 
-    core: List[nn.Module] = [
+    core: list[nn.Module] = [
         DenseBlock(steps[-2], depth=depths[-1], step=step),
     ]
     slides = windowed(steps, size=3)

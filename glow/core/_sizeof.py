@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['sizeof']
 
 import functools
@@ -5,7 +7,6 @@ import sys
 from collections import abc
 from enum import Enum
 from inspect import isgetsetdescriptor, ismemberdescriptor
-from typing import Set
 
 import numpy as np
 
@@ -15,7 +16,7 @@ from ._repr import Si
 
 def for_unseen(fn, default=Si.bits):
     """Protection from self-referencing"""
-    def wrapper(obj, seen: Set[int] = None) -> Si:
+    def wrapper(obj, seen: set[int] = None) -> Si:
         if seen is None:
             seen = set()
         id_ = id(obj)
@@ -30,7 +31,7 @@ def for_unseen(fn, default=Si.bits):
 
 @functools.singledispatch
 @for_unseen
-def sizeof(obj, seen: Set[int] = None) -> Si:
+def sizeof(obj, seen: set[int] = None) -> Si:
     """Computes size of object, no matter how complex it is.
 
     Inspired by

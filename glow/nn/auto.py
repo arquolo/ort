@@ -1,9 +1,12 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['Input', 'Model']
 
 import functools
 import inspect
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Iterator, List, Tuple, Type, Union
+from typing import Any
 
 from torch import nn
 
@@ -21,9 +24,9 @@ class ModuleWrapper(functools.partial):
 class Input:
     channels: int
     module: nn.Module = nn.Module()
-    leaves: List['Input'] = field(default_factory=list, init=False)
+    leaves: list[Input] = field(default_factory=list, init=False)
 
-    def __or__(self, node: Union[ModuleWrapper, nn.Module]) -> 'Input':
+    def __or__(self, node: ModuleWrapper | nn.Module) -> 'Input':
         channels = self.channels
 
         module: nn.Module
@@ -46,7 +49,7 @@ class Input:
 
 
 class Model(nn.ModuleDict):
-    def __init__(self, inputs: List['Input'], outputs: List['Input']):
+    def __init__(self, inputs: list[Input], outputs: list[Input]):
         super().__init__()
 
         count = countable()
@@ -78,9 +81,9 @@ class Model(nn.ModuleDict):
         return tuple(state[o] for o in self.outputs)
 
 
-def _get_supported_modules() -> Iterator[Tuple[str, Any]]:
+def _get_supported_modules() -> Iterator[tuple[str, Any]]:
     for name in get_wild_imports(nn):
-        module: Type[nn.Module] = getattr(nn, name)
+        module: type[nn.Module] = getattr(nn, name)
         if not inspect.isclass(module) or not issubclass(module, nn.Module):
             continue
 

@@ -1,6 +1,8 @@
+from __future__ import annotations  # until 3.10
+
 import argparse
 import pathlib
-from typing import DefaultDict
+from collections import defaultdict
 
 import glow
 import glow.metrics as m
@@ -124,7 +126,7 @@ metrics = [
 stepper = gnn.Stepper(
     net, opt, criterion, metrics, device=DEVICE, fp16=args.fp16)
 
-history = DefaultDict[str, list](list)
+history: defaultdict[str, list] = defaultdict(list)
 with tqdm(total=epoch_len * args.epochs, desc='train') as pbar:
     for i, split in enumerate(glow.ichunked(loader, epoch_len), 1):
         tscalars = stepper.run(split, pbar).scalars

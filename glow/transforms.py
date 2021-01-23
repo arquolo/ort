@@ -1,18 +1,12 @@
-__all__ = (
-    'bit_noise',
-    'cutout',
-    'dither',
-    'elastic',
-    'grid_shuffle',
-    'hsv',
-    'jpeg',
-    'multi_noise',
-    'Compose',
-    'Transform',
-)
+from __future__ import annotations  # until 3.10
+
+__all__ = [
+    'bit_noise', 'cutout', 'dither', 'elastic', 'grid_shuffle', 'hsv', 'jpeg',
+    'multi_noise', 'Compose', 'Transform'
+]
 
 from types import MappingProxyType
-from typing import Literal, Protocol, Tuple
+from typing import Literal, Protocol
 
 import cv2
 import numba
@@ -35,16 +29,16 @@ _DitherKind = Literal['jarvis-judice-ninke', 'stucki', 'sierra']
 
 class Transform(Protocol):
     def __call__(self, *args: np.ndarray,
-                 rg: np.random.Generator) -> Tuple[np.ndarray, ...]:
+                 rg: np.random.Generator) -> tuple[np.ndarray, ...]:
         ...
 
 
 class Compose:
-    def __init__(self, *callables: Tuple[float, Transform]):
+    def __init__(self, *callables: tuple[float, Transform]):
         self.callables = callables
 
     def __call__(self, *args: np.ndarray,
-                 rg: np.random.Generator) -> Tuple[np.ndarray, ...]:
+                 rg: np.random.Generator) -> tuple[np.ndarray, ...]:
         for prob, fn in self.callables:
             if rg.uniform() <= prob:
                 new_args = fn(*args, rg=rg)
@@ -70,7 +64,7 @@ def dither(image: np.ndarray,
            *_,
            rg: np.random.Generator = None,
            bits: int = 3,
-           kind: _DitherKind = 'stucki') -> Tuple[np.ndarray, ...]:
+           kind: _DitherKind = 'stucki') -> tuple[np.ndarray, ...]:
     mat = _MATRICES[kind]
     assert image.dtype == 'u1'
     if image.ndim == 3:
@@ -96,7 +90,7 @@ def bit_noise(image: np.ndarray,
               *_,
               rg: np.random.Generator,
               keep: int = 4,
-              count: int = 8) -> Tuple[np.ndarray]:
+              count: int = 8) -> tuple[np.ndarray]:
     residual = image.copy()
     out = np.zeros_like(image)
     for n in range(1, 1 + count):
@@ -117,7 +111,7 @@ def elastic(image: np.ndarray,
             scale: float = 1,
             sigma: float = 50,
             interp=cv2.INTER_LINEAR,
-            border=cv2.BORDER_REFLECT_101) -> Tuple[np.ndarray, ...]:
+            border=cv2.BORDER_REFLECT_101) -> tuple[np.ndarray, ...]:
     """Elastic deformation of image
 
     Parameters:
@@ -146,7 +140,7 @@ def cutout(image: np.ndarray,
            rg: np.random.Generator,
            max_holes=80,
            size=8,
-           fill_value=0) -> Tuple[np.ndarray]:
+           fill_value=0) -> tuple[np.ndarray]:
     num_holes = rg.integers(max_holes)
     if not num_holes:
         return image,
@@ -155,7 +149,7 @@ def cutout(image: np.ndarray,
 
     # [N, dims, (min, max)]
     holes = anchors[:, :, None] + [-size // 2, size // 2]
-    holes = holes.clip(0, np.asarray(image.shape[:2])[:, None])
+    holes = holes.clip(0, np.array(image.shape[:2])[:, None])
 
     image = image.copy()
     for (y0, y1), (x0, x1) in holes:
@@ -167,7 +161,7 @@ def jpeg(image: np.ndarray,
          *_,
          rg: np.random.Generator,
          low=0,
-         high=15) -> Tuple[np.ndarray]:
+         high=15) -> tuple[np.ndarray]:
     assert image.dtype == np.uint8
     quality = int(rg.integers(low=low, high=high))
     _, buf = cv2.imencode('.jpg', image, (cv2.IMWRITE_JPEG_QUALITY, quality))
@@ -179,7 +173,7 @@ def multi_noise(image: np.ndarray,
                 rg: np.random.Generator,
                 low=0.5,
                 high=1.5,
-                elementwise=False) -> Tuple[np.ndarray]:
+                elementwise=False) -> tuple[np.ndarray]:
     assert image.dtype == np.uint8
     if elementwise:
         mask = rg.random(image.shape[:2], dtype='f4')
@@ -201,7 +195,7 @@ def multi_noise(image: np.ndarray,
 def hsv(image: np.ndarray,
         *_,
         rg: np.random.Generator,
-        max_shift=20) -> Tuple[np.ndarray]:
+        max_shift=20) -> tuple[np.ndarray]:
     assert image.dtype == np.uint8
     assert image.ndim == image.shape[-1] == 3
     hue, sat, val = rg.uniform(-max_shift, max_shift, size=3)
@@ -228,7 +222,7 @@ def grid_shuffle(image: np.ndarray,
                  mask: np.ndarray = None,
                  *,
                  rg: np.random.Generator,
-                 grid=4) -> Tuple[np.ndarray, ...]:
+                 grid=4) -> tuple[np.ndarray, ...]:
     axes = (
         np.linspace(0, size, grid + 1, dtype=np.int)
         for size in image.shape[:2])
@@ -261,4 +255,4 @@ def grid_shuffle(image: np.ndarray,
         for (y2, x2), (y1, x1), (ys, xs) in tiles:
             new_v[y2:y2 + ys, x2:x2 + xs] = v[y1:y1 + ys, x1:x1 + xs]
         results.append(new_v)
-    return (*results, )
+    return *results,

@@ -1,11 +1,13 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['Si', 'countable', 'mangle', 'repr_as_obj']
 
-from typing import Callable, Counter, Dict, Optional, Union
+from collections import Callable, Counter
 
 import wrapt
 
 
-def mangle() -> Callable[[str], Optional[str]]:
+def mangle() -> Callable[[str], str | None]:
     """Appends number to already seen strings, making them distinct
 
     >>> mangled = mangle()
@@ -16,9 +18,9 @@ def mangle() -> Callable[[str], Optional[str]]:
     >>> mangled('a')
     'a:1'
     """
-    store = Counter[str]()
+    store: Counter[str] = Counter()
 
-    def call(name: str) -> Optional[str]:
+    def call(name: str) -> str | None:
         if name is None:
             return None
 
@@ -42,7 +44,7 @@ def countable() -> Callable[[object], int]:
     >>> id_('a')
     0
     """
-    instances: Dict[int, int] = {}
+    instances: dict[int, int] = {}
     return lambda obj: instances.setdefault(id(obj), len(instances))
 
 
@@ -75,12 +77,12 @@ class Si(wrapt.ObjectProxy):
     _prefixes = 'qryzafpnum kMGTPEZYRQ'
     _prefixes_bin = _prefixes[_prefixes.index(' '):].upper()
 
-    def __init__(self, value: Union[float, int] = 0, _si: bool = True):
+    def __init__(self, value: float | int = 0, _si: bool = True):
         super().__init__(value)
         self._self_si = _si
 
     @classmethod
-    def bits(cls, value: Union[float, int] = 0) -> 'Si':
+    def bits(cls, value: float | int = 0) -> Si:
         return cls(value, _si=False)
 
     def __str__(self):

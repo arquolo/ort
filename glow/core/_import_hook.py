@@ -1,16 +1,18 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['register_post_import_hook', 'when_imported']
 
 import sys
 from importlib import abc, util
 from threading import RLock
-from typing import Any, Callable, Dict, List, TypeVar
+from typing import Any, Callable, TypeVar
 
 _Hook = Callable[[Any], object]
 _HookVar = TypeVar('_HookVar', bound=_Hook)
 
 _INITIALIZED = False
 _LOCK = RLock()
-_HOOKS: Dict[str, List[_Hook]] = {}
+_HOOKS: dict[str, list[_Hook]] = {}
 
 
 class _ImportHookChainedLoader:

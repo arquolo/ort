@@ -1,9 +1,10 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['export', 'get_wild_imports', 'import_tree']
 
 import pkgutil
 import sys
 from types import ModuleType
-from typing import Tuple
 
 
 class ExportError(Exception):
@@ -66,7 +67,7 @@ def import_tree(pkg: str):
         __import__(subpkg)
 
 
-def get_wild_imports(module: ModuleType) -> Tuple[str, ...]:
+def get_wild_imports(module: ModuleType) -> tuple[str, ...]:
     """Get contents of module.__all__ if possible"""
     __all__ = getattr(module, '__all__', None)
     if __all__ is not None:

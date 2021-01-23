@@ -1,8 +1,11 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['get_gpu_state']
 
 import os
+from collections.abc import Sequence
 from contextlib import ExitStack
-from typing import NamedTuple, Sequence
+from typing import NamedTuple
 
 from .. import Si
 

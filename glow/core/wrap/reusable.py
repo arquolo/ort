@@ -1,11 +1,13 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['Reusable']
 
 import asyncio
 import threading
 import weakref
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import (Callable, ClassVar, Generic, List, Optional, Protocol,
-                    TypeVar)
+from typing import ClassVar, Generic, Protocol, TypeVar
 
 _T = TypeVar('_T')
 _T_co = TypeVar('_T_co', covariant=True)
@@ -40,9 +42,9 @@ class Reusable(Generic[_T]):
     _lock: asyncio.Lock = field(init=False)
     factory: _Factory[_T]
     delay: float
-    finalize: Optional[Callable[[_T], None]] = None
-    _deleter: Optional[asyncio.TimerHandle] = None
-    _box: List[_T] = field(default_factory=list)
+    finalize: Callable[[_T], None] | None = None
+    _deleter: asyncio.TimerHandle | None = None
+    _box: list[_T] = field(default_factory=list)
 
     def __post_init__(self):
         self._lock = _call_in_loop(asyncio.Lock, self._loop)
@@ -53,7 +55,7 @@ class Reusable(Generic[_T]):
         return fut.result()
 
     def _finalize(self, ref):
-        obj: Optional[_T] = ref()
+        obj: _T | None = ref()
         if obj is not None and self.finalize is not None:
             self.finalize(obj)
 

@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['coroutine', 'lock_seed', 'summary', 'trace', 'trace_module']
 
 import functools
@@ -7,15 +9,16 @@ import os
 import random
 import threading
 import types
+from collections import Counter
+from collections.abc import Generator, Hashable
 from contextlib import suppress
-from typing import Callable, Counter, Generator, TypeVar, cast
+from typing import Callable, TypeVar, cast
 
 import numpy as np
 import wrapt
 
 from ._import_hook import register_post_import_hook
 
-_T = TypeVar('_T')
 _F = TypeVar('_F', bound=Callable[..., Generator])
 
 
@@ -109,8 +112,8 @@ def threadsafe_coroutine(fn, _, args, kwargs):
 
 
 @threadsafe_coroutine
-def summary() -> Generator[None, _T, None]:
-    state = Counter[_T]()
+def summary() -> Generator[None, Hashable, None]:
+    state: Counter[Hashable] = Counter()
     while True:
         key = yield
         if key is None:

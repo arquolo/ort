@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = [
     'auto_ddp', 'auto_model', 'barrier', 'get_rank', 'get_world_size',
     'reduce_if_needed'
@@ -6,7 +8,8 @@ __all__ = [
 import pickle
 from pathlib import Path
 from functools import partial, update_wrapper
-from typing import Any, Callable, Optional, Protocol, Tuple, TypeVar, cast
+from collections.abc import Callable
+from typing import Any, Protocol, TypeVar, cast
 
 import torch
 import torch.cuda
@@ -33,14 +36,14 @@ def get_world_size() -> int:
     return dist.get_world_size() if dist.is_initialized() else 0
 
 
-def barrier(rank: Optional[int] = None) -> None:
+def barrier(rank: int | None = None) -> None:
     """Synchronize all processes"""
     if get_world_size() > 1 and (rank is None or rank == get_rank()):
         dist.barrier()
 
 
 def reduce_if_needed(*tensors: torch.Tensor,
-                     mean: bool = False) -> Tuple[torch.Tensor, ...]:
+                     mean: bool = False) -> tuple[torch.Tensor, ...]:
     """Reduce tensors across all machines"""
     if (world := get_world_size()) > 1:
         tensors = *(t.clone() for t in tensors),
@@ -98,7 +101,7 @@ class _AutoDdp:
         # * Left as safe measure
         mp.spawn(self._worker, nprocs=self.ngpus)
 
-    def _worker(self, rank: Optional[int]) -> None:
+    def _worker(self, rank: int | None) -> None:
         if rank is None:
             return self.train_fn(self.net, *self.args, **self.kwargs)
 

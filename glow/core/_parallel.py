@@ -1,9 +1,13 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['buffered', 'mapped']
 
 import atexit
 import enum
 import os
 import signal
+from collections import deque
+from collections.abc import Iterator
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from contextlib import ExitStack, contextmanager
 from cProfile import Profile
@@ -14,8 +18,7 @@ from pstats import Stats
 from queue import Queue
 from threading import Event, RLock
 from time import perf_counter
-from typing import (Callable, Deque, Iterable, Iterator, Optional, Protocol,
-                    Sequence, Tuple, TypeVar, Union, cast)
+from typing import Callable, Iterable, Protocol, Sequence, TypeVar, cast
 
 import loky
 
@@ -31,7 +34,6 @@ class _Empty(enum.Enum):
     token = 0
 
 
-_MaybeEmpty = Union[_T, _Empty]
 _empty = _Empty.token
 
 # -------------------------- some useful interfaces --------------------------
@@ -98,9 +100,8 @@ def _get_executor(num_workers: int, mp: bool) -> Iterator[Executor]:
     atexit.unregister(terminator)  # Cancel killing workers if all ok
 
 
-def _setup_queues(
-        stack: ExitStack, latency: int,
-        mp: Union[bool, Executor]) -> Tuple[Executor, _IQueue, _IEvent]:
+def _setup_queues(stack: ExitStack, latency: int,
+                  mp: bool | Executor) -> tuple[Executor, _IQueue, _IEvent]:
     executor = (
         mp if isinstance(mp, Executor) else stack.enter_context(
             _get_executor(1, mp)))
@@ -120,9 +121,9 @@ def _setup_queues(
 class _Buffered(Iterable[_T]):
     iterable: Iterable[_T]
     latency: int
-    mp: Union[bool, Executor]
+    mp: bool | Executor
 
-    def _consume(self, q: _IQueue[_MaybeEmpty[_T]], stop: _IEvent):
+    def _consume(self, q: _IQueue[_T | _Empty], stop: _IEvent):
         with ExitStack() as stack:
             stack.callback(q.put, _empty)  # Match last q.get
             stack.callback(q.put, _empty)  # Signal to stop iteration
@@ -136,7 +137,7 @@ class _Buffered(Iterable[_T]):
 
     def __iter__(self) -> Iterator[_T]:
         with ExitStack() as stack:
-            q: _IQueue[_MaybeEmpty[_T]]
+            q: _IQueue[_T | _Empty]
             executor, q, stop = _setup_queues(stack, self.latency, self.mp)
 
             stack.callback(q.get)  # Wakes q.put when main fails
@@ -153,7 +154,7 @@ class _Buffered(Iterable[_T]):
 
 def buffered(iterable: Iterable[_T],
              latency: int = 2,
-             mp: Union[bool, Executor] = False) -> _Buffered[_T]:
+             mp: bool | Executor = False) -> _Buffered[_T]:
     """
     Iterates over `iterable` in background thread with at most `latency`
     items ahead from caller
@@ -203,11 +204,11 @@ class _AutoSize:
 @dataclass
 class _Mapped(Iterable[_T]):
     proxy: Callable[..., Sequence[_T]]
-    iterables: Tuple[Iterable, ...]
+    iterables: tuple[Iterable, ...]
     num_workers: int
     latency: int
     mp: bool
-    chunksize: Optional[int]
+    chunksize: int | None
 
     def _submit(self, executor: Executor, iterable: Iterable[tuple],
                 chunksize: int) -> Iterator[Future]:
@@ -231,7 +232,7 @@ class _Mapped(Iterable[_T]):
 
     def _iter_chunks(self, stack: ExitStack,
                      jobs: Iterator[Future]) -> Iterator[Sequence[_T]]:
-        results = Deque[Future]()
+        results: deque[Future] = deque()
         stack.callback(lambda: {fut.cancel() for fut in reversed(results)})
 
         results.extend(islice(jobs, self.latency + self.num_workers))
@@ -261,7 +262,7 @@ def mapped(func: Callable[..., _T],
            num_workers: int = _NUM_CPUS,
            latency: int = 2,
            mp: bool = False,
-           chunksize: Optional[int] = None) -> _Mapped[_T]:
+           chunksize: int | None = None) -> _Mapped[_T]:
     """Returns an iterator equivalent to map(fn, *iterables).
 
     Differences:

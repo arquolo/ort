@@ -1,11 +1,14 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = [
     'device', 'dump_to_onnx', 'frozen', 'inference', 'param_count', 'profile'
 ]
 
 import functools
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from io import BytesIO
-from typing import Callable, Iterator, Tuple, TypeVar, cast
+from typing import Callable, TypeVar, cast
 
 import torch
 import torch.autograd
@@ -92,7 +95,7 @@ def profile(fn: _F) -> _F:
     return cast(_F, functools.update_wrapper(wrapper, fn))
 
 
-def dump_to_onnx(net: nn.Module, *shapes: Tuple[int, ...],
+def dump_to_onnx(net: nn.Module, *shapes: tuple[int, ...],
                  device='cpu') -> bytes:
     """Converts model to ONNX graph, represented as bytes
 

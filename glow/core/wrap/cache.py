@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['memoize']
 
 import argparse
@@ -6,12 +8,12 @@ import concurrent.futures as cf
 import enum
 import functools
 from collections import Counter
+from collections.abc import Hashable, KeysView, MutableMapping, Sequence
 from contextlib import ExitStack
 from dataclasses import InitVar, dataclass, field
 from threading import RLock
-from typing import (Any, Callable, ClassVar, Dict, Generic, Hashable, KeysView,
-                    Literal, MutableMapping, NamedTuple, Optional, Sequence,
-                    Type, TypeVar, Union, cast)
+from typing import (Any, Callable, ClassVar, Generic, Literal, NamedTuple,
+                    TypeVar, cast)
 from weakref import WeakValueDictionary
 
 from .._repr import Si
@@ -58,7 +60,7 @@ class _IStore(Generic[_T]):
     def store_clear(self) -> None:
         raise NotImplementedError
 
-    def store_get(self, key: Hashable) -> Optional[_Node[_T]]:
+    def store_get(self, key: Hashable) -> _Node[_T] | None:
         raise NotImplementedError
 
     def store_set(self, key: Hashable, node: _Node[_T]) -> None:
@@ -91,7 +93,7 @@ class _DictMixin(_InitializedStore, _IStore[_T]):
     def keys(self) -> KeysView:
         raise NotImplementedError
 
-    def __getitem__(self, key: Hashable) -> Union[_T, _Empty]:
+    def __getitem__(self, key: Hashable) -> _T | _Empty:
         with self.lock:
             if node := self.store_get(key):
                 self.stats.hits += 1
@@ -109,7 +111,7 @@ class _DictMixin(_InitializedStore, _IStore[_T]):
 
 @dataclass(repr=False)
 class _ReprMixin(_InitializedStore, _IStore[_T]):
-    refs: ClassVar[MutableMapping[int, '_ReprMixin']] = WeakValueDictionary()
+    refs: ClassVar[MutableMapping[int, _ReprMixin]] = WeakValueDictionary()
 
     def __post_init__(self, capacity_int: int) -> None:
         super().__post_init__(capacity_int)
@@ -132,7 +134,7 @@ class _ReprMixin(_InitializedStore, _IStore[_T]):
 
 @dataclass(repr=False)
 class _Store(_ReprMixin[_T], _DictMixin[_T]):
-    store: Dict[Hashable, _Node[_T]] = field(default_factory=dict)
+    store: dict[Hashable, _Node[_T]] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.store)
@@ -143,7 +145,7 @@ class _Store(_ReprMixin[_T], _DictMixin[_T]):
     def store_clear(self) -> None:
         self.store.clear()
 
-    def store_get(self, key: Hashable) -> Optional[_Node[_T]]:
+    def store_get(self, key: Hashable) -> _Node[_T] | None:
         return self.store.get(key)
 
     def store_set(self, key: Hashable, node: _Node[_T]) -> None:
@@ -158,7 +160,7 @@ class _HeapCache(_Store[_T]):
 class _LruCache(_Store[_T]):
     drop_recent = False
 
-    def store_get(self, key: Hashable) -> Optional[_Node[_T]]:
+    def store_get(self, key: Hashable) -> _Node[_T] | None:
         if node := self.store.pop(key, None):
             self.store[key] = node
             return node
@@ -203,11 +205,11 @@ def _memoize(cache: _DictMixin, key_fn: _KeyFn, fn: _F) -> _F:
 
 class _Job(NamedTuple):
     token: Any
-    future: Union[asyncio.Future, cf.Future]
+    future: asyncio.Future | cf.Future
 
 
-def _dispatch(fn: _Fbatch, cache: Dict[Hashable, object],
-              queue: Dict[Hashable, _Job]) -> None:
+def _dispatch(fn: Callable[[Sequence], list], cache: dict[Hashable, object],
+              queue: dict[Hashable, _Job]) -> None:
     jobs = {**queue}
     queue.clear()
 
@@ -226,8 +228,8 @@ def _dispatch(fn: _Fbatch, cache: Dict[Hashable, object],
 
 def _memoize_batched_aio(key_fn: _KeyFn, fn: _Fbatch) -> _Fbatch:
     assert callable(fn)
-    cache: Dict[Hashable, asyncio.Future] = {}
-    queue: Dict[Hashable, _Job] = {}
+    cache: dict[Hashable, asyncio.Future] = {}
+    queue: dict[Hashable, _Job] = {}
     loop = make_loop()
 
     def _load(token) -> asyncio.Future:
@@ -257,8 +259,8 @@ def _memoize_batched_aio(key_fn: _KeyFn, fn: _Fbatch) -> _Fbatch:
 def _memoize_batched(key_fn: _KeyFn, fn: _Fbatch) -> _Fbatch:
     assert callable(fn)
     lock = RLock()
-    cache: Dict[Hashable, cf.Future] = {}
-    queue: Dict[Hashable, _Job] = {}
+    cache: dict[Hashable, cf.Future] = {}
+    queue: dict[Hashable, _Job] = {}
 
     def _load(stack: ExitStack, token: Any) -> cf.Future:
         key = key_fn(token)
@@ -295,7 +297,7 @@ def memoize(
     batched: bool = False,
     policy: _Policy = 'raw',
     key_fn: _KeyFn = _key_fn
-) -> Union[Callable[[_F], _F], Callable[[_Fbatch], _Fbatch]]:
+) -> Callable[[_F], _F] | Callable[[_Fbatch], _Fbatch]:
     """Returns dict-cache decorator.
 
     Parameters:
@@ -306,7 +308,7 @@ def memoize(
     if not capacity:
         return lambda fn: fn
 
-    caches: Dict[str, Type[_Store]] = {
+    caches: dict[str, type[_Store]] = {
         'raw': _HeapCache,
         'lru': _LruCache,
         'mru': _MruCache,

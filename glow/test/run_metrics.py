@@ -1,4 +1,4 @@
-from typing import Tuple
+from __future__ import annotations  # until 3.10
 
 import torch
 from matplotlib import pyplot as plt
@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 import glow.nn
 from glow import metrics as m
 
-metrics: Tuple[m.Metric, ...] = (
+metrics: tuple[m.Metric, ...] = (
     m.Lambda(m.accuracy_),
     m.Confusion(
         acc=m.accuracy,

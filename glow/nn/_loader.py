@@ -1,10 +1,12 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['make_loader']
 
 import os
 import warnings
-from collections import abc
+from collections.abc import Iterator, Sequence, Sized
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, Sequence, Union
+from typing import Any, Protocol
 
 import torch
 from torch.utils.data import Dataset, IterableDataset, Sampler
@@ -18,7 +20,7 @@ _NUM_CPUS: int = os.cpu_count() or 1
 
 
 class _CollateFn(Protocol):
-    def __call__(self, __items: abc.Sequence) -> Any:
+    def __call__(self, __items: Sequence) -> Any:
         ...
 
 
@@ -58,10 +60,10 @@ class _BaseLoader:
     pin_memory: bool
     dataset: Dataset
 
-    def _iter_samples(self) -> abc.Iterator:
+    def _iter_samples(self) -> Iterator:
         raise NotImplementedError
 
-    def __iter__(self) -> abc.Iterator:
+    def __iter__(self) -> Iterator:
         batches = chunked(self._iter_samples(), self.batch_size)
         batches = map(self.collate_fn, batches)
         if not self.pin_memory:
@@ -79,9 +81,9 @@ class _BaseLoader:
 class _MapLoader(_BaseLoader):
     sampler: Sampler
     mp: bool
-    chunksize: Optional[int]
+    chunksize: int | None
 
-    def _iter_samples(self) -> abc.Iterator:
+    def _iter_samples(self) -> Iterator:
         num_workers = self.num_workers
         if (world := get_world_size()) > 1:
             num_workers //= world
@@ -114,9 +116,9 @@ class _Worker:
     dataset: IterableDataset
     id: int  # noqa: A003, shadowing builtin `id`, false positive
     num_workers: int
-    seed: Optional[int] = None
+    seed: int | None = None
 
-    def __iter__(self) -> abc.Iterator:
+    def __iter__(self) -> Iterator:
         torch_worker._worker_info = self
         try:
             yield from self.dataset
@@ -128,7 +130,7 @@ class _Worker:
 class _IterableLoader(_BaseLoader):
     dataset: IterableDataset
 
-    def _iter_samples(self) -> abc.Iterator:
+    def _iter_samples(self) -> Iterator:
         if not self.num_workers:
             yield from buffered(self.dataset)
             return
@@ -150,8 +152,8 @@ class _IterableLoader(_BaseLoader):
 
 
 class _IAutoSampler(Sampler):
-    def __init__(self, source: Union[Dataset, Sampler]) -> None:
-        if not isinstance(source, abc.Sized):
+    def __init__(self, source: Dataset | Sampler) -> None:
+        if not isinstance(source, Sized):
             raise TypeError('Argument should have length')
 
         self.source = source
@@ -161,7 +163,7 @@ class _IAutoSampler(Sampler):
     def _indices(self) -> list:
         raise NotImplementedError
 
-    def __iter__(self) -> abc.Iterator:
+    def __iter__(self) -> Iterator:
         indices = self._indices()
 
         if (world := get_world_size()) > 1:
@@ -184,7 +186,7 @@ class _IAutoSampler(Sampler):
 
 class _AutoSampler(_IAutoSampler):
     def __init__(self, dataset: Dataset, shuffle: bool = False):
-        if not isinstance(dataset, abc.Sized):
+        if not isinstance(dataset, Sized):
             raise TypeError('Argument sampler should have length')
 
         super().__init__(dataset)

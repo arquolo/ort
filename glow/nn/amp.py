@@ -1,11 +1,12 @@
 """Utilities to train and eval nn.Module in half-precision mode (float16)."""
 
+from __future__ import annotations  # until 3.10
+
 __all__ = ['get_amp_context']
 
 import warnings
 from collections import abc
 from functools import partial
-from typing import Dict, Optional, Set
 
 import numpy as np
 import torch
@@ -90,8 +91,8 @@ class _AmpContext(OptContext):
         self._step = torch.zeros(1).int()
         self._scale = torch.empty(1).fill_(_MAX_SCALE)
 
-        self._devices: Set[torch.device] = set()
-        self._grads: Dict[nn.Parameter, torch.Tensor] = {}
+        self._devices: set[torch.device] = set()
+        self._grads: dict[nn.Parameter, torch.Tensor] = {}
         for param_group in optim.param_groups:
             for p in param_group['params']:
                 if p.requires_grad:
@@ -167,9 +168,9 @@ def _deep_to_hook(_, xs, device=None, dtype=None):
 
 
 def get_amp_context(net: nn.Module,
-                    opt: Optional[torch.optim.Optimizer] = None,
+                    opt: torch.optim.Optimizer | None = None,
                     fp16: bool = False,
-                    retry_on_inf: bool = True) -> Optional[OptContext]:
+                    retry_on_inf: bool = True) -> OptContext | None:
     """Switch model and optimizer to mixed precision mode
 
     Parameters:

@@ -1,9 +1,13 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['as_sized']
 
 import functools
+import typing as ty
+from collections.abc import Iterable, Iterator, Sized
 from dataclasses import dataclass
-from typing import (Callable, Generic, Iterable, Iterator, Optional, Protocol,
-                    Sized, TypeVar, overload, runtime_checkable)
+from typing import (Callable, Generic, Protocol, TypeVar, overload,
+                    runtime_checkable)
 
 _T = TypeVar('_T')
 _T_co = TypeVar('_T_co', covariant=True)
@@ -12,12 +16,12 @@ _SizeHint = Callable[..., int]
 
 
 @runtime_checkable
-class SizedIterable(Sized, Iterable[_T_co], Protocol[_T_co]):
+class SizedIterable(Sized, ty.Iterable[_T_co], Protocol[_T_co]):
     ...
 
 
 @runtime_checkable
-class SizedIterator(Sized, Iterator[_T_co], Protocol[_T_co]):
+class SizedIterator(Sized, ty.Iterator[_T_co], Protocol[_T_co]):
     ...
 
 
@@ -116,8 +120,8 @@ def as_sized(gen_fn=None, *, hint):
 # ---------------------------------------------------------------------------
 
 
-class _PartialIter(Iterable[_T]):
-    def __init__(self, hint: Optional[Callable[..., int]],
+class _PartialIter(ty.Iterable[_T]):
+    def __init__(self, hint: Callable[..., int] | None,
                  gen_fn: Callable[..., Iterable[_T]], *args: object,
                  **kwargs: object) -> None:
         self.gen = functools.partial(gen_fn, *args, **kwargs)

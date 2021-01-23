@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = [
     'stream_batched', 'call_once', 'threadlocal', 'interpreter_lock',
     'shared_call'
@@ -7,11 +9,12 @@ import functools
 import sys
 import threading
 import time
+from collections.abc import Sequence
 from concurrent.futures import Future
 from contextlib import ExitStack, contextmanager
 from queue import Empty, SimpleQueue
 from threading import Thread
-from typing import Any, Callable, Sequence, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 from weakref import WeakValueDictionary
 
 _T = TypeVar('_T')
@@ -53,10 +56,10 @@ class _DeferredStack(ExitStack):
     ExitStack that allows deferring.
     When return value of callback function should be accessible, use this.
     """
-    def defer(self, fn: Callable[..., _T], *args, **kwargs) -> 'Future[_T]':
-        future: 'Future[_T]' = Future()
+    def defer(self, fn: Callable[..., _T], *args, **kwargs) -> Future[_T]:
+        future: Future[_T] = Future()
 
-        def apply(future: 'Future[_T]') -> None:
+        def apply(future: Future[_T]) -> None:
             try:
                 result = fn(*args, **kwargs)
             except BaseException as exc:
@@ -88,7 +91,7 @@ def call_once(fn: _ZeroArgsF) -> _ZeroArgsF:
 def shared_call(fn: _F) -> _F:
     """Merges concurrent calls to `fn` with the same `args` to single one"""
     lock = threading.RLock()
-    futures: 'WeakValueDictionary[str, Future]' = WeakValueDictionary()
+    futures: WeakValueDictionary[str, Future] = WeakValueDictionary()
 
     def wrapper(*args, **kwargs):
         key = f'{fn}{args}{kwargs}'

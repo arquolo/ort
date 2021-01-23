@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['TiledImage', 'read_tiled']
 
 import ctypes
@@ -8,7 +10,7 @@ from contextlib import contextmanager, nullcontext
 from enum import Enum
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, NamedTuple, Optional, Tuple, Type, Union
+from typing import Any, NamedTuple, TypeVar
 
 import cv2
 import numpy as np
@@ -19,7 +21,7 @@ from .. import call_once, memoize
 
 _TIFF: Any = None
 _OSD: Any = None
-_TYPE_REGISTRY: Dict[str, Type['TiledImage']] = {}
+_TYPE_REGISTRY: dict[str, type[TiledImage]] = {}
 
 
 def _patch_path(prefix):
@@ -92,7 +94,7 @@ class _TileScaler(NamedTuple):
     image: np.ndarray
     scale: float = 1.
 
-    def view(self, size: Optional[Tuple[int, int]] = None) -> np.ndarray:
+    def view(self, size: tuple[int, int] | None = None) -> np.ndarray:
         """
         Converts region to array of desired size.
         If size is not set, rounding will be used,
@@ -122,17 +124,17 @@ class _Decoder:
         raise NotImplementedError
 
     @property
-    def spacing(self) -> Optional[float]:
+    def spacing(self) -> float | None:
         raise NotImplementedError
 
     @contextmanager
-    def _directory(self, level):
+    def _directory(self, level: int):
         with self._lock:
             yield
 
 
 class TiledImage(_Decoder):
-    def __init_subclass__(cls: Type['TiledImage'], extensions: str) -> None:
+    def __init_subclass__(cls: type[TiledImage], extensions: str) -> None:
         _TYPE_REGISTRY.update({f'.{ext}': cls for ext in extensions.split()})
 
     def __init__(self, path: Path, num_levels: int = 0) -> None:
@@ -144,7 +146,7 @@ class TiledImage(_Decoder):
         self._num_levels = num_levels
         self._spec = dict(self._init_spec(num_levels))
 
-    def __reduce__(self) -> Union[str, tuple]:
+    def __reduce__(self) -> str | tuple:
         return TiledImage, (self.path, )  # self._slices)
 
     def _init_spec(self, num_levels: int):
@@ -157,19 +159,18 @@ class TiledImage(_Decoder):
                 yield step, spec
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         return self._spec[1]['shape']
 
     @property
-    def scales(self) -> Tuple[int, ...]:
+    def scales(self) -> tuple[int, ...]:
         return tuple(self._spec.keys())
 
     def __repr__(self) -> str:
         return (f'{type(self).__name__}'
                 f"('{self.path}', shape={self.shape}, scales={self.scales})")
 
-    def __getitem__(self, slices: Union[Tuple[slice, slice],
-                                        slice]) -> _TileScaler:
+    def __getitem__(self, slices: tuple[slice, slice] | slice) -> _TileScaler:
         """Retrieves tile"""
         if isinstance(slices, slice):
             slices = (slices, slice(None, None, slices.step))
@@ -190,13 +191,13 @@ class TiledImage(_Decoder):
             image = self._get_patch(box, **spec)
         return _TileScaler(image, step / rstep)
 
-    def thumbnail(self, scale: int = None) -> Tuple[np.ndarray, int]:
+    def thumbnail(self, scale: int = None) -> tuple[np.ndarray, int]:
         if scale is None:
             scale = self.scales[-1]
         return self[::scale, ::scale].view(), scale
 
     def at(self,
-           z0_yx_offset: Tuple[int, int],
+           z0_yx_offset: tuple[int, ...],
            dst_size: int,
            scale: int = 1) -> np.ndarray:
         y, x = z0_yx_offset
@@ -246,8 +247,8 @@ class _OpenslideImage(
                         self.bg_color)
 
     @property
-    def metadata(self) -> Dict[str, str]:
-        m: Dict[str, str] = {}
+    def metadata(self) -> dict[str, str]:
+        m: dict[str, str] = {}
         if names := _OSD.openslide_get_property_names(self._ptr):
             i = 0
             while name := names[i]:
@@ -257,7 +258,7 @@ class _OpenslideImage(
         return m
 
     @property
-    def spacing(self) -> Optional[float]:
+    def spacing(self) -> float | None:
         mpp = (
             _OSD.openslide_get_property_value(
                 self._ptr, f'openslide.mpp-{ax}'.encode()) for ax in 'yx')
@@ -287,7 +288,7 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
         return value.value
 
     @contextmanager
-    def _directory(self, level):
+    def _directory(self, level: int):
         with super()._directory(level):
             _TIFF.TIFFSetDirectory(self._ptr, level)
             try:
@@ -390,7 +391,7 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
         return out
 
     @property
-    def spacing(self) -> Optional[float]:
+    def spacing(self) -> float | None:
         s = [(10000 / m)
              for x in (283, 282) if (m := self._tag(ctypes.c_float, x))]
         if s:
@@ -405,7 +406,7 @@ class _TiffImage(TiledImage, extensions='svs tif tiff'):
     10_485_760,
     policy='lru',
     key_fn=lambda name: Path(name).resolve().as_posix())
-def read_tiled(anypath: Union[Path, str]) -> TiledImage:
+def read_tiled(anypath: Path | str) -> TiledImage:
     """Reads multi-scale images.
 
     Usage:

@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['serialize']
 
 import copyreg
@@ -10,11 +12,11 @@ import sys
 import tempfile
 import threading
 import weakref
+from collections.abc import Callable, Sequence
 from itertools import starmap
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
-from typing import (Any, Callable, ClassVar, Dict, List, NamedTuple, Optional,
-                    Sequence)
+from typing import Any, ClassVar, NamedTuple
 
 import loky
 
@@ -24,7 +26,7 @@ _SYSTEM_SHM_MIN_SIZE = int(2e9)
 _SYSTEM_SHM = Path('/dev/shm')
 _SYSTEM_TEMP = Path(tempfile.gettempdir())
 
-reducers: Dict[type, Callable] = {}
+reducers: dict[type, Callable] = {}
 loky.set_loky_pickler(pickle.__name__)
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,7 @@ class _Proxy:
 
 class _Cached(_Proxy):
     __slots__ = ('_proxy', 'uid')
-    _saved: ClassVar[Optional[_Item]] = None
+    _saved: ClassVar[_Item | None] = None
 
     def __init__(self, proxy: _Proxy):
         self._proxy = proxy
@@ -124,7 +126,7 @@ class _Mmap:
 
 # -------------------------------- untested --------------------------------
 if False:
-    _CACHE: Dict[int, Any] = {}
+    _CACHE: dict[int, Any] = {}
     _LOCK = threading.RLock()
 
     import numpy as np
@@ -185,7 +187,7 @@ def _dumps(obj: object,
 
 class _ShmemProxy(_Proxy):
     def __init__(self, item: _Item) -> None:
-        buffers: List[pickle.PickleBuffer] = []
+        buffers: list[pickle.PickleBuffer] = []
         self.uid = item.uid
         self._root = _dumps(item, callback=buffers.append)
         self._memos = []

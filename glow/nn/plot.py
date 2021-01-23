@@ -1,8 +1,10 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['plot_model']
 
 import functools
 from contextlib import ExitStack
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import graphviz
 import torch
@@ -40,8 +42,8 @@ class Builder:
         self.params = params
 
         self._mangle = mangle()
-        self._seen: Dict[str, str] = {}
-        self._shapes: Dict[Function, str] = {}
+        self._seen: dict[str, str] = {}
+        self._shapes: dict[Function, str] = {}
         root = graphviz.Digraph(
             name='root',
             graph_attr={
@@ -167,7 +169,7 @@ class Builder:
         # -------- end node --------
 
 
-def plot_model(model: nn.Module, *input_shapes: Tuple[int, ...], device='cpu'):
+def plot_model(model: nn.Module, *input_shapes: tuple[int, ...], device='cpu'):
     """Produces Graphviz representation of PyTorch autograd graph
 
     Blue nodes are the Variables that require grad, orange are Tensors

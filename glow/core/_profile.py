@@ -1,3 +1,5 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['memprof', 'time_this', 'timer']
 
 import functools
@@ -6,7 +8,8 @@ import time
 import weakref
 import inspect
 from contextlib import contextmanager
-from typing import Callable, Dict, TypeVar, cast
+from collections.abc import Callable
+from typing import TypeVar, cast
 
 from ._repr import Si
 
@@ -55,7 +58,7 @@ def timer(name: str = None, callback: Callable[[float], object] = None):
 
 def time_this(fn: _F) -> _F:
     """Log function timings at program exit"""
-    infos: Dict[int, list] = {}
+    infos: dict[int, list] = {}
 
     def finalize(start):
         if not infos:

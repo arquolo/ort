@@ -1,19 +1,21 @@
 """Make builtin iterators compatible with `len`"""
+from __future__ import annotations  # until 3.10
+
 __all__ = ['apply']
 
 import builtins
 import functools
 import operator
+from collections.abc import Iterable
 from itertools import (accumulate, count, cycle, islice, product, repeat,
                        starmap, tee, zip_longest)
-from typing import Iterable, List, Type
 
 # --------------------------------- builtins ---------------------------------
 
 len_hint = functools.singledispatch(builtins.len)
 
-_tee: Type = tee(())[0].__class__
-_iterables: List[Iterable] = [
+_tee: type = tee(())[0].__class__
+_iterables: list[Iterable] = [
     '', b'',
     range(0), (), [], {}, {}.keys(), {}.values(), {}.items(),
     reversed(()),

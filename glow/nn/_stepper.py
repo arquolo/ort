@@ -1,7 +1,9 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['Stepper']
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Tuple
 
 import torch
 import torch.cuda.amp
@@ -28,7 +30,7 @@ class Stepper:
             self.net, self.opt, fp16=self.fp16, retry_on_inf=True)
 
     def _step(self, data: torch.Tensor, target: torch.Tensor,
-              is_train: bool) -> Tuple[torch.Tensor, ...]:
+              is_train: bool) -> tuple[torch.Tensor, ...]:
         target = target
         with torch.cuda.amp.autocast(self.fp16):
             out = self.net(data.to(self.device))

@@ -1,7 +1,9 @@
+from __future__ import annotations  # until 3.10
+
 __all__ = ['Svg']
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Tuple
 
 import cv2
 import numpy as np
@@ -47,6 +49,7 @@ class Svg:
     Svg(mask, ['pos', 'neg']).save('sample.svg')
     ```
     """
+    def __init__(self, mask: np.ndarray, classes: list[str]):
         e = ElementMaker()
 
         groups = []
@@ -90,7 +93,7 @@ class Svg:
         path.with_suffix('.svg').write_text(self.body)
 
     @staticmethod
-    def load(path: Path) -> Iterable[Tuple[str, List[np.ndarray]]]:
+    def load(path: Path) -> Iterable[tuple[str, list[np.ndarray]]]:
         """
         Yields contours, contour is 2d numpy array of shape [count, (x, y)]
         """
