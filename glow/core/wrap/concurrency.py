@@ -137,27 +137,27 @@ def stream_batched(func=None, *, batch_size, latency=0.1, timeout=20.):
             timeout=timeout)
 
     assert callable(func)
-    inputs = SimpleQueue()
+    buf = SimpleQueue()
+
+    def _fetch_batch():
+        end_time = time.monotonic() + latency
+        for _ in range(batch_size):
+            try:
+                yield buf.get(timeout=end_time - time.monotonic())
+            except (Empty, ValueError):  # ValueError on negative timeout
+                return
 
     def _serve_forever():
         while True:
-            batch = []
-            end_time = time.monotonic() + latency
-            while (len(batch) < batch_size and
-                   (time_left := end_time - time.monotonic()) > 0):
-                try:
-                    batch.append(inputs.get(timeout=time_left))
-                except Empty:
-                    if not batch:
-                        time.sleep(0.001)
-                    break
-            jobs, fs = zip(*batch)
-            _batch_apply(func, jobs, fs)
+            if batch := [*_fetch_batch()]:
+                _batch_apply(func, *zip(*batch))
+            else:
+                time.sleep(0.001)
 
     def wrapper(batch):
         futures = [Future() for _ in batch]
-        for fut, sample in zip(futures, batch):
-            inputs.put((fut, sample))
+        for item, fut in zip(batch, futures):
+            buf.put((item, fut))
         return [fut.result(timeout=timeout) for fut in futures]
 
     Thread(target=_serve_forever, daemon=True).start()
